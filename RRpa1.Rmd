@@ -1,0 +1,231 @@
+---
+title: "Reproducible Research Project 1"
+author: "Louis Jordan"
+date: "Sunday, October 18, 2015"
+output: html_document
+---
+
+### Introduction
+The goal is to introduce a formal approach to producing reproducible research.  
+   
+      I.   Load/Preprocess the Data  
+      II.  Impute Missing Values  
+      III. Analyze/Interpret Results  
+
+#### **Section 0: Preprocessing**
+load/read the original csv data file
+```{r readData}
+data <- read.csv("activity.csv", header = TRUE, sep = ',', 
+                colClasses = c("numeric", "character", "integer"))
+dFr <- data
+```
+
+##### examine the structure of the data frame
+```{r viewStr}
+str(dFr)
+```
+##### view the first five rows of the data
+```{r viewFirst5, results = "hide"}
+head(dFr, 5)
+```
+
+##### view the last five rows of the data
+```{r viewLast5, results = "hide"}
+tail(dFr, 5)
+```
+
+##### take a summary of the data
+```{r viewSummary dFr}
+summary(dFr)
+```
+
+##### determine if any missing values exist (as NAs) in the data frame
+```{r viewMissing}
+missing <- sum(is.na(dFr$steps))
+print(missing)
+```
+
+##### if necessary, create data frame with NAs omitted
+```{r removeNAs}
+dFrNotNA <- na.omit(dFr)
+```
+
+##### format the date-time object as 'ymd' as necessary
+```{r date1}
+library(lubridate)
+dFr$date <- ymd(data[, 2])
+```
+
+#### **Section 1: Determine the Average Number of Steps Taken per Day**
+##### aggregate total steps per date, omitting missing data
+```{r aggregate1}
+dailyStepsByDate <- aggregate(steps ~ date, dFrNotNA, sum)
+# print(dailyStepsByDate)
+```
+
+##### create histogram of total number of steps in a day
+```{r histogram1, fig.height = 4, fig.width = 6}
+hist(dailyStepsByDate$steps,
+     breaks = 20,
+     col = "#33FF33",     
+     border = "#3300FF", 
+     lwd = 2, lty = 1,
+     main = "Histogram: Number of Steps per Day", 
+     xlab = "Daily Total Number of Steps")     
+```
+
+##### take the mean AND median total number of steps per day
+```{r mean1}
+mean (dailyStepsByDate$steps)
+median (dailyStepsByDate$steps)
+```
+
+#### **Section 2: Determine the Average Daily Activity Pattern**
+##### aggregate steps by interval vs days for daily activity pattern
+```{r aggregate2}
+library(ggplot2)
+avgDailyPattern <- aggregate(x = list(steps = dFrNotNA$steps), 
+                             by = list(interval = dFrNotNA$interval), 
+                             FUN = mean)
+```
+
+##### ggplot method of average daily activity pattern 
+##### time series plot of average number of steps per 5-min. intervals vs days
+```{r, time series plot, fig.height = 4, fig.width = 6}
+ggplot(data = avgDailyPattern, aes(x = interval, y = steps)) +
+      labs(title = "Time Series Plot: Average Steps per 5-minute Interval") +
+      geom_line(size = 1, color = "#990099") +
+      xlab("5-min. Interval (averaged across all days)") +
+            ylab("Average Number of Steps")
+```
+
+Activity patterns differ from weekdays to weekends.
+
+##### Determine which 5-min. interval, averaged, contains maximum number of steps
+```{r max1}
+maxStepsInterval <- which.max(avgDailyPattern$steps)
+avgDailyPattern[maxStepsInterval, ]
+```
+
+Interval 835 (rowID 104) contains the maximum number of steps, at 206.  
+
+#### Section 3: Imput Missing Values
+##### display count of missing values (also observed from the 'str' command)
+```{r viewMissing2}
+print(missing)
+```
+
+##### assign a temporary data frame & a variable for the missing values, 'NAs'  
+```{r forNAs}
+dFr2 <- data
+theNAs <- is.na(dFr2$steps)
+```
+
+##### replace each 'NA' with its respective 'average step count per interval';
+##### store the resulting dataset in the variable 'newSetNoNAs'
+```{r newDataSet}
+thisInterval <- tapply(dFr2$steps, dFr2$interval, mean, na.rm = TRUE)
+newSetNoNAs <- thisInterval[as.character(dFr2$interval[theNAs])]
+```
+
+##### verify that the newly created dataset contains no missing values...
+```{r verify1}
+sum(is.na(newSetNoNAs))
+```
+
+##### dFr2 verification status before ...
+```{r verify2}
+nrow(dFr2[!complete.cases(dFr2), ])
+summary(dFr2)
+```
+
+##### selectively, row-by-row, impute each 'NA' value with its average step 
+##### count per interval value
+```{r imputeNAs}
+dailyStepsByInterval <- aggregate(steps ~ interval, dFrNotNA, mean)
+for (i in 1:nrow(dFr2)) {
+      if (is.na(dFr2$steps[i])) {
+            intervalValue <- dFr2$interval[i]
+            thisRow <- which(dailyStepsByInterval$interval == intervalValue)
+            sCountValue <- dailyStepsByInterval$steps[thisRow]
+            dFr2$steps[i] <- sCountValue
+      } # end if
+} # end for
+```
+
+##### dFr2 verification status after ...
+```{r verify3}
+nrow(dFr2[!complete.cases(dFr2), ])
+summary(dFr2)
+```
+
+##### create histogram of imputed values
+```{r, histogram3, fig.height = 4, fig.width = 6}
+dailyStepsImputed <- aggregate(steps ~ date, dFr2, sum)
+hist(dailyStepsImputed$steps,
+     breaks = 20,
+     col = "#FF0033",     
+     border = "#000000", 
+     lwd = 2, lty = 1,
+     main = "Histogram: Number of Steps per Day (Imputed)", 
+     xlab = "Daily Total Number of Steps")
+```
+
+##### take the mean AND median total number of steps per day of imputed values
+```{r mean2}
+mean(dailyStepsImputed$steps)
+median(dailyStepsImputed$steps)
+```
+
+##### determine the impact of imputing missing values into the estimates
+Imputing slightly impacted the median, changing from 10765 to 10766.19.
+
+#### Section 4: Asses differences in activity patterns between weekdays & weekends
+##### format date-time object to ymd as necessary
+```{r formatDateObject2}
+dFr2$date <- ymd(data[, 2])
+```
+
+##### add new column to indicate day of week 
+```{r add1}
+dFr2$day <- weekdays(dFr2$date)
+```
+
+##### add new column & initialize to weekday
+```{r add2}
+dFr2$dayType <- c("weekday")
+```
+
+##### assign Saturdays & Sundays to dayType = weekend
+```{r weekend1}
+for (i in 1:nrow(dFr2)){
+      if (dFr2$day[i] == "Saturday" || dFr2$day[i] == "Sunday"){
+            dFr2$dayType[i] <- "weekend"
+      } # end if
+} # end for
+```
+
+##### convert dayType from character to factor
+```{r convert1}
+dFr2$dayType <- as.factor(dFr2$dayType)
+```
+
+##### create the weekdays/weekends panel plot
+library(ggplot2) already called ...
+
+##### aggregate steps by interval to get average steps per interval across days
+```{r aggregate3}
+intervalStepsImputed <- aggregate(steps ~ interval + dayType, dFr2, FUN = mean)
+```
+
+##### create panel plot
+```{r time series panel plot, fig.height = 5, fig.width = 6}
+ggplot(intervalStepsImputed, aes(interval, steps)) +
+      labs(title = "Time Series Panel Plot: Weekday/Weekend Activity") +
+      geom_line(size = 1, color = "#660099") + 
+      xlab("Interval") + 
+      ylab("Number of Steps") + 
+      facet_wrap(~ dayType, ncol = 1)
+```
+
+Weekday/Weekend activity patterns differ, slightly lowering during weekends.
